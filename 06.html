@@ -1849,13 +1849,32 @@
         if (fullBackgroundMode) {
             document.body.dataset.viewportMode = 'background';
         }
-        const renderer = new THREE.WebGLRenderer({
-            antialias: false,
-            alpha: transparentBackground,
-            premultipliedAlpha: !transparentBackground,
-            powerPreference: 'high-performance',
-            preserveDrawingBuffer: true
-        });
+        function createRenderer() {
+            const baseOptions = {
+                antialias: false,
+                alpha: transparentBackground,
+                premultipliedAlpha: !transparentBackground,
+                failIfMajorPerformanceCaveat: false,
+                preserveDrawingBuffer: false
+            };
+            const attempts = [
+                { ...baseOptions, powerPreference: 'default' },
+                { ...baseOptions, powerPreference: 'low-power' },
+                { ...baseOptions }
+            ];
+            let lastError = null;
+            for (const options of attempts) {
+                try {
+                    return new THREE.WebGLRenderer(options);
+                } catch (error) {
+                    lastError = error;
+                    console.warn('WebGL renderer initialization failed; retrying with softer options.', error);
+                }
+            }
+            throw lastError || new Error('Unable to initialize WebGL renderer.');
+        }
+
+        const renderer = createRenderer();
         renderer.setClearColor(0x000000, transparentBackground ? 0 : 1);
         renderer.setPixelRatio(1);
         container.appendChild(renderer.domElement);
@@ -1873,14 +1892,16 @@
             sunElevation: 36,
             sunViewerAngle: -50,
             isOrtho: false,
+            cameraDistance: 16.0,
+            mobileCameraDistance: 24.0,
             autoQuality: false
         });
         const DEFAULT_SEED = LOCKED_PRESENTATION.seed;
         const MODEL_BASE_KM = 0.5;
         const RESET_TARGET_HEIGHT_RATIO = 0.5;
         const RESET_CAMERA_HEIGHT_RATIO = 0.93;
-        const RESET_CAMERA_DISTANCE = 42.0;
-        const MOBILE_RESET_CAMERA_DISTANCE = 68.0;
+        const RESET_CAMERA_DISTANCE = LOCKED_PRESENTATION.cameraDistance;
+        const MOBILE_RESET_CAMERA_DISTANCE = LOCKED_PRESENTATION.mobileCameraDistance;
         const MOBILE_ORTHO_FRAME_SCALE = 1.85;
         const FRAME_VERTICAL_PADDING_KM = 2.0;
         const ORTHO_VERTICAL_WORLD_SCALE = 1.0;
