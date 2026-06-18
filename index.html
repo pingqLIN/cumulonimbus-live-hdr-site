@@ -102,6 +102,9 @@
             padding: 0;
             background: var(--stage-sky-fill);
         }
+        body[data-controls-hidden="true"] #stage-edge-fill {
+            display: none;
+        }
         body[data-background="transparent"],
         body[data-background="transparent"].fullscreen-mode,
         body[data-background="transparent"][data-controls-hidden="true"] {
@@ -1400,9 +1403,9 @@
                 layoutP.x /= widthStretch;
                 vec3 modelP = worldToModelSpace(layoutP);
                 vec3 cloudP = modelP;
-                cloudP.x *= 0.96;
-                cloudP.z *= 1.04;
-                cloudP.y = (modelP.y + 0.62) * 1.04 - 0.62;
+                cloudP.x *= 0.82;
+                cloudP.z *= 0.90;
+                cloudP.y = (modelP.y + 0.62) * 0.88 - 0.62;
                 float phase = uSeed * 0.017 + uTime * 0.018;
 
                 float macro = ellipsoidSdf(cloudP, vec3(0.0, -1.34, 0.0), vec3(2.7, 0.68, 1.36));
@@ -1412,6 +1415,15 @@
                 macro = addLobe(macro, cloudP, vec3(1.42, -1.0, -0.08), vec3(0.92, 0.72, 0.78), phase + 4.2, 0.28, 0.42);
                 macro = addLobe(macro, cloudP, vec3(-0.18, 0.22, 0.02), vec3(0.9, 0.72, 0.76), phase + 5.4, 0.22, 0.38);
                 macro = addLobe(macro, cloudP, vec3(0.74, 0.02, -0.04), vec3(0.82, 0.62, 0.7), phase + 6.2, 0.2, 0.34);
+
+                if (uSystemCount > 1.5) {
+                    vec3 secondP = cloudP - vec3(3.25, 0.08, -0.34);
+                    float second = ellipsoidSdf(secondP, vec3(0.0, -1.22, 0.0), vec3(1.78, 0.58, 1.02));
+                    second = addLobe(second, secondP, vec3(-0.72, -0.86, 0.02), vec3(0.72, 0.58, 0.66), phase + 7.1, 0.26, 0.34);
+                    second = addLobe(second, secondP, vec3(0.34, -0.42, -0.02), vec3(0.82, 0.72, 0.70), phase + 8.3, 0.24, 0.36);
+                    second = addLobe(second, secondP, vec3(0.06, 0.08, 0.04), vec3(0.66, 0.54, 0.58), phase + 9.2, 0.2, 0.30);
+                    macro = smin(macro, second, 0.72);
+                }
 
                 float baseWave =
                     (noise(vec3(cloudP.xz * 0.42 + phase, uSeed * 0.17)) - 0.5) * 0.36 +
@@ -1489,9 +1501,9 @@
 
                 vec3 q = worldToModelSpace(p);
                 if (uMobileCumulusMode > 0.5) {
-                    q.x *= 0.96;
-                    q.z *= 1.04;
-                    q.y = (q.y + 0.62) * 1.04 - 0.62;
+                    q.x *= 0.82;
+                    q.z *= 0.90;
+                    q.y = (q.y + 0.62) * 0.88 - 0.62;
                 }
 
                 vec3 baseQ = q;
@@ -1731,7 +1743,13 @@
                 vec3 workbenchSky = mix(localhostBottomSky, localhostTopSky, screenY) * uAmbientIntensity;
                 vec3 clearSky = workbenchSky;
                 vec3 sunsetSky = mix(vec3(0.86, 0.42, 0.22), vec3(0.08, 0.12, 0.34), skyT) * uAmbientIntensity;
-                vec3 moonSky = mix(vec3(0.08, 0.11, 0.18), vec3(0.01, 0.018, 0.055), skyT) * uAmbientIntensity;
+                vec3 moonSky = mix(vec3(0.012, 0.020, 0.052), vec3(0.0015, 0.004, 0.018), skyT) * max(0.72, uAmbientIntensity);
+                vec2 starUv = vec2(atan(rd.x, rd.z) * 0.15915494 + 0.5, asin(clamp(rd.y, -1.0, 1.0)) * 0.31830988 + 0.5);
+                vec2 starCell = floor(starUv * vec2(150.0, 92.0));
+                float starHash = hash(starCell.x + starCell.y * 193.13 + uSeed * 0.071);
+                float starVisibility = smoothstep(0.02, 0.42, rd.y) * (1.0 - smoothstep(0.88, 1.0, rd.y));
+                float starTwinkle = 0.68 + 0.32 * sin(uTime * 4.2 + starHash * 81.0);
+                moonSky += vec3(step(0.991, starHash) * starVisibility * starTwinkle * 0.26);
                 float viewSkyT = smoothstep(mix(-0.36, -0.22, sunHeight01), mix(0.34, 0.84, sunHeight01), rd.y);
                 vec3 nightHorizonSky = vec3(0.010, 0.012, 0.028);
                 vec3 nightZenithSky = vec3(0.002, 0.004, 0.015);
@@ -1947,8 +1965,50 @@
             style: 'random',
             autoQuality: false
         });
+        function randomRange(min, max) {
+            return min + Math.random() * (max - min);
+        }
+
+        function randomSunViewerAngle() {
+            const magnitude = randomRange(18, 92);
+            return Math.random() < 0.5 ? -magnitude : magnitude;
+        }
+
+        function createLockedRandomPresentation() {
+            const night = Math.random() < 0.05;
+            const twoClouds = Math.random() < 0.10;
+            if (night) {
+                return {
+                    seed: Math.floor(Math.random() * 10000),
+                    time: randomRange(1.8, 7.8),
+                    systems: twoClouds ? 2 : 1,
+                    sunIntensity: randomRange(0.85, 1.45),
+                    ambientIntensity: randomRange(0.72, 0.92),
+                    sunElevation: randomRange(-10, -4),
+                    sunViewerAngle: Math.random() < 0.5 ? -70 : 70,
+                    lightPreset: 2,
+                    skyMode: 3,
+                    photographicStyle: true
+                };
+            }
+            const sunElevation = randomRange(8, 62);
+            const sunHeight01 = (sunElevation - 8) / 54;
+            return {
+                seed: Math.floor(Math.random() * 10000),
+                time: randomRange(0.35, 8.5),
+                systems: twoClouds ? 2 : 1,
+                sunIntensity: randomRange(3.2, 4.4) + sunHeight01 * randomRange(0.8, 2.2),
+                ambientIntensity: randomRange(0.54, 0.82),
+                sunElevation,
+                sunViewerAngle: randomSunViewerAngle(),
+                lightPreset: sunElevation < 18 ? 1 : 0,
+                skyMode: 4,
+                photographicStyle: true
+            };
+        }
+
         const LOCKED_STYLE_MODE = (query.get('style') || LOCKED_PRESENTATION.style || '').toLowerCase();
-        const LOCKED_RANDOM_STYLE_SEED = Math.floor(Math.random() * 10000);
+        const LOCKED_RANDOM_PRESENTATION = createLockedRandomPresentation();
         const DEFAULT_SEED = LOCKED_PRESENTATION.seed;
         const MODEL_BASE_KM = 0.5;
         const RESET_TARGET_HEIGHT_RATIO = 0.5;
@@ -1960,7 +2020,7 @@
         const MOBILE_ORTHO_FRAME_SCALE = 1.85;
         const FRAME_VERTICAL_PADDING_KM = 2.0;
         const ORTHO_VERTICAL_WORLD_SCALE = 1.0;
-        const MOTION_SPEED_SCALE = 1.35;
+        const MOTION_SPEED_SCALE = 1.62;
         const DEFAULT_TIME_SPEED = LOCKED_PRESENTATION.timeSpeed;
         const MIN_TIME_SPEED = 0.5;
         const DEFAULT_RENDER_SCALE = LOCKED_PRESENTATION.renderScale;
@@ -2751,7 +2811,8 @@
             saveFloatingPanelState();
         });
 
-        const TRANSLATIONS = {
+        const LOAD_I18N = !useMobileWideView() && query.get('i18n') !== '0';
+        const TRANSLATIONS = LOAD_I18N ? {
             en: {
                 'meta.title': 'Cumulonimbus Live HDR Observatory',
                 'overlay.kicker': 'Operational volumetric study',
@@ -2866,7 +2927,7 @@
                 'title.sunAngle': '觀者視線與太陽方位的水平正負夾角。',
                 'title.fullscreenUnsupported': '此瀏覽器不支援 Fullscreen API。'
             }
-        };
+        } : { en: {}, 'zh-TW': {} };
 
         function normalizeLanguage(value) {
             if (!value) return null;
@@ -2877,6 +2938,7 @@
         }
 
         function resolveInitialLanguage() {
+            if (!LOAD_I18N) return 'en';
             const queryLanguage = normalizeLanguage(query.get('lang'));
             if (queryLanguage) return queryLanguage;
             const storedLanguage = normalizeLanguage(localStorage.getItem('cumulonimbus-live-hdr-language'));
@@ -2896,6 +2958,11 @@
         }
 
         function applyLanguage(nextLanguage) {
+            if (!LOAD_I18N) {
+                document.documentElement.lang = 'en';
+                document.title = 'Cumulonimbus Live HDR Observatory';
+                return;
+            }
             currentLanguage = nextLanguage;
             localStorage.setItem('cumulonimbus-live-hdr-language', currentLanguage);
             document.documentElement.lang = currentLanguage;
@@ -3000,19 +3067,24 @@
         }
 
         function applyLockedPresentationConfig() {
-            currentSeed = LOCKED_STYLE_MODE === 'random' ? LOCKED_RANDOM_STYLE_SEED : LOCKED_PRESENTATION.seed;
-            systemCount = LOCKED_PRESENTATION.systems;
+            const randomPresentation = LOCKED_STYLE_MODE === 'random' ? LOCKED_RANDOM_PRESENTATION : null;
+            currentSeed = randomPresentation?.seed ?? LOCKED_PRESENTATION.seed;
+            systemCount = randomPresentation?.systems ?? LOCKED_PRESENTATION.systems;
             timeSpeed = LOCKED_PRESENTATION.timeSpeed;
             timePaused = false;
+            simulationTime = randomPresentation?.time ?? simulationTime;
             renderScale = LOCKED_PRESENTATION.renderScale;
             autoQualityEnabled = LOCKED_PRESENTATION.autoQuality;
             currentTropo = LOCKED_PRESENTATION.tropopause;
             freezingLevel = LOCKED_PRESENTATION.freezingLevel;
             windShear = LOCKED_PRESENTATION.windShear;
-            sunIntensity = LOCKED_PRESENTATION.sunIntensity;
-            ambientIntensity = LOCKED_PRESENTATION.ambientIntensity;
-            sunElevation = LOCKED_PRESENTATION.sunElevation;
-            sunViewerAngle = LOCKED_PRESENTATION.sunViewerAngle;
+            sunIntensity = randomPresentation?.sunIntensity ?? LOCKED_PRESENTATION.sunIntensity;
+            ambientIntensity = randomPresentation?.ambientIntensity ?? LOCKED_PRESENTATION.ambientIntensity;
+            sunElevation = randomPresentation?.sunElevation ?? LOCKED_PRESENTATION.sunElevation;
+            sunViewerAngle = randomPresentation?.sunViewerAngle ?? LOCKED_PRESENTATION.sunViewerAngle;
+            lightPreset = randomPresentation?.lightPreset ?? lightPreset;
+            skyMode = randomPresentation?.skyMode ?? skyMode;
+            photographicStyle = randomPresentation?.photographicStyle ?? photographicStyle;
             isOrthoMode = LOCKED_PRESENTATION.isOrtho;
 
             material.uniforms.uSeed.value = currentSeed;
@@ -3024,6 +3096,9 @@
             material.uniforms.uAmbientIntensity.value = ambientIntensity;
             material.uniforms.uSunElevation.value = sunElevation;
             material.uniforms.uSunViewerAngle.value = sunViewerAngle;
+            material.uniforms.uPhotographicStyle.value = photographicStyle ? 1.0 : 0.0;
+            material.uniforms.uLightPreset.value = lightPreset;
+            material.uniforms.uSkyMode.value = skyMode;
             material.uniforms.uMobileCumulusMode.value = useMobileCumulusMode() ? 1.0 : 0.0;
             material.uniforms.uIsOrtho.value = 0.0;
             material.uniforms.uShowGrid.value = 0.0;
