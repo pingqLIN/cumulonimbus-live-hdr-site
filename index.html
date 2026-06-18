@@ -1884,12 +1884,13 @@
             systems: 1,
             timeSpeed: 1,
             renderScale: 0.8,
+            mobileRenderScale: 0.56,
             tropopause: 8,
             freezingLevel: 3,
             windShear: 0.3,
             sunIntensity: 4,
-            ambientIntensity: 0.75,
-            sunElevation: 36,
+            ambientIntensity: 0.68,
+            sunElevation: 32,
             sunViewerAngle: -50,
             isOrtho: false,
             cameraDistance: 16.0,
@@ -2190,8 +2191,11 @@
         }
 
         function computeEffectiveRenderScale(width, height) {
-            if (!isFullscreenDisplay && windowedViewportClass !== 'viewport-fullscreen') return renderScale;
-            return Math.min(renderScale, computeFullscreenRenderScaleCap(width, height));
+            const mobileCap = useMobileWideView() ? LOCKED_PRESENTATION.mobileRenderScale : renderScale;
+            if (!isFullscreenDisplay && windowedViewportClass !== 'viewport-fullscreen') {
+                return Math.min(renderScale, mobileCap);
+            }
+            return Math.min(renderScale, mobileCap, computeFullscreenRenderScaleCap(width, height));
         }
 
         function updateOrthoBounds(newAspect) {
