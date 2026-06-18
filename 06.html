@@ -1112,6 +1112,7 @@
             uniform float uTransparentBackground;
             uniform float uHdr10Mode;
             uniform float uHdrReferencePeakNits;
+            uniform float uMobileCumulusMode;
 
             float hash(float n) { return fract(sin(n) * 43758.5453123); }
 
@@ -1391,7 +1392,38 @@
                 return smin(field, cbLobe(p, center, radius, phase, roughness), blend);
             }
 
+            float mapMobileCumulusMacro(vec3 p) {
+                float widthStretch = mix(1.0, 1.04, smoothstep(0.5, 2.0, uAspect));
+                vec3 layoutP = p;
+                layoutP.x /= widthStretch;
+                vec3 modelP = worldToModelSpace(layoutP);
+                vec3 cloudP = modelP;
+                cloudP.x *= 1.28;
+                cloudP.z *= 1.12;
+                cloudP.y = (modelP.y + 0.76) * 1.18 - 0.76;
+                float phase = uSeed * 0.013 + uTime * 0.025;
+
+                float macro = ellipsoidSdf(cloudP, vec3(0.0, -1.02, 0.0), vec3(1.78, 0.66, 1.10));
+                macro = addLobe(macro, cloudP, vec3(-0.92, -0.78, 0.02), vec3(0.66, 0.54, 0.62), phase + 0.2, 0.24, 0.30);
+                macro = addLobe(macro, cloudP, vec3(-0.42, -0.32, -0.06), vec3(0.76, 0.64, 0.68), phase + 1.8, 0.22, 0.30);
+                macro = addLobe(macro, cloudP, vec3(0.42, -0.30, 0.04), vec3(0.80, 0.66, 0.70), phase + 3.0, 0.22, 0.30);
+                macro = addLobe(macro, cloudP, vec3(0.98, -0.78, -0.02), vec3(0.62, 0.52, 0.60), phase + 4.1, 0.24, 0.30);
+                macro = addLobe(macro, cloudP, vec3(0.02, 0.10, 0.0), vec3(0.78, 0.48, 0.64), phase + 5.2, 0.18, 0.28);
+
+                float baseWave =
+                    (noise(vec3(cloudP.xz * 0.45 + phase, uSeed * 0.17)) - 0.5) * 0.24 +
+                    sin(cloudP.x * 0.86 + phase) * 0.07;
+                float bottomLimiter = (MODEL_LOCAL_BASE + 0.86 + baseWave) - cloudP.y;
+                float topLimiter = cloudP.y - (MODEL_LOCAL_BASE + 3.04 + baseWave * 0.10);
+                float sideLimiter = length(cloudP.xz * vec2(0.82, 1.02)) - 2.26;
+                return smax(smax(smax(macro, bottomLimiter, 0.30), topLimiter, 0.30), sideLimiter, 0.38);
+            }
+
             float mapCloudMacro(vec3 p) {
+                if (uMobileCumulusMode > 0.5) {
+                    return mapMobileCumulusMacro(p);
+                }
+
                 float widthStretch = mix(1.0, 1.2, smoothstep(0.5, 2.0, uAspect));
                 vec3 layoutP = p;
                 layoutP.x /= widthStretch;
@@ -1453,6 +1485,21 @@
                 }
 
                 vec3 q = worldToModelSpace(p);
+                if (uMobileCumulusMode > 0.5) {
+                    vec3 mobileQ = q;
+                    mobileQ.x *= 1.28;
+                    mobileQ.z *= 1.12;
+                    mobileQ.y = (q.y + 0.76) * 1.18 - 0.76;
+                    float dMobile = -macro;
+                    float softBillow = fbm(vec3(mobileQ.x * 0.86, mobileQ.y * 0.72, mobileQ.z * 0.86) + vec3(uSeed * 0.019, 2.4, uTime * 0.018));
+                    float fineEdge = noise(vec3(mobileQ.x * 1.24 + uSeed * 0.031, mobileQ.y * 0.84, mobileQ.z * 1.24 - uTime * 0.02));
+                    float edgeBand = smoothstep(-0.48, 0.34, macro);
+                    dMobile += (softBillow - 0.47) * 0.54;
+                    dMobile -= edgeBand * smoothstep(0.56, 0.88, fineEdge) * 0.26;
+                    dMobile -= smoothstep(0.42, 0.86, abs(mobileQ.y + 0.76)) * 0.08;
+                    return clamp(dMobile, 0.0, 0.82);
+                }
+
                 vec3 baseQ = q;
                 q.y -= uTime * 0.25;
                 q.x += uTime * 0.05;
@@ -1901,6 +1948,8 @@
         const MODEL_BASE_KM = 0.5;
         const RESET_TARGET_HEIGHT_RATIO = 0.5;
         const RESET_CAMERA_HEIGHT_RATIO = 0.93;
+        const MOBILE_RESET_TARGET_HEIGHT_RATIO = 0.24;
+        const MOBILE_RESET_CAMERA_HEIGHT_RATIO = 0.46;
         const RESET_CAMERA_DISTANCE = LOCKED_PRESENTATION.cameraDistance;
         const MOBILE_RESET_CAMERA_DISTANCE = LOCKED_PRESENTATION.mobileCameraDistance;
         const MOBILE_ORTHO_FRAME_SCALE = 1.85;
@@ -1944,6 +1993,10 @@
             return mobileWideViewQuery.matches;
         }
 
+        function useMobileCumulusMode() {
+            return query.get('mobileCumulus') === '1' || useMobileWideView();
+        }
+
         function resetCameraDistance() {
             return useMobileWideView() ? MOBILE_RESET_CAMERA_DISTANCE : RESET_CAMERA_DISTANCE;
         }
@@ -1954,11 +2007,13 @@
         }
 
         function resetPosition() {
-            return new THREE.Vector3(0, heightAtCloudRatio(RESET_CAMERA_HEIGHT_RATIO), -resetCameraDistance());
+            const ratio = useMobileCumulusMode() ? MOBILE_RESET_CAMERA_HEIGHT_RATIO : RESET_CAMERA_HEIGHT_RATIO;
+            return new THREE.Vector3(0, heightAtCloudRatio(ratio), -resetCameraDistance());
         }
 
         function resetTarget() {
-            return new THREE.Vector3(0, heightAtCloudRatio(RESET_TARGET_HEIGHT_RATIO), 0);
+            const ratio = useMobileCumulusMode() ? MOBILE_RESET_TARGET_HEIGHT_RATIO : RESET_TARGET_HEIGHT_RATIO;
+            return new THREE.Vector3(0, heightAtCloudRatio(ratio), 0);
         }
 
         function resetOrthoHeight() {
@@ -2174,7 +2229,8 @@
                 uSkyMode: { value: skyMode },
                 uTransparentBackground: { value: transparentBackground ? 1.0 : 0.0 },
                 uHdr10Mode: { value: hdr10Mode ? 1.0 : 0.0 },
-                uHdrReferencePeakNits: { value: HDR10_REFERENCE_PEAK_NITS }
+                uHdrReferencePeakNits: { value: HDR10_REFERENCE_PEAK_NITS },
+                uMobileCumulusMode: { value: useMobileCumulusMode() ? 1.0 : 0.0 }
             }
         });
 
@@ -2210,6 +2266,7 @@
             const nextMobileWideViewActive = useMobileWideView();
             if (nextMobileWideViewActive === mobileWideViewActive) return;
             mobileWideViewActive = nextMobileWideViewActive;
+            material.uniforms.uMobileCumulusMode.value = useMobileCumulusMode() ? 1.0 : 0.0;
             updateOrthoFrameForCurrentTropo();
             if (isOrthoMode) {
                 controlsOrtho.update();
@@ -2948,6 +3005,7 @@
             material.uniforms.uAmbientIntensity.value = ambientIntensity;
             material.uniforms.uSunElevation.value = sunElevation;
             material.uniforms.uSunViewerAngle.value = sunViewerAngle;
+            material.uniforms.uMobileCumulusMode.value = useMobileCumulusMode() ? 1.0 : 0.0;
             material.uniforms.uIsOrtho.value = 0.0;
             material.uniforms.uShowGrid.value = 0.0;
 
