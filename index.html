@@ -1393,30 +1393,18 @@
             }
 
             float mapMobileCumulusMacro(vec3 p) {
-                float widthStretch = mix(1.0, 1.04, smoothstep(0.5, 2.0, uAspect));
+                float widthStretch = mix(1.0, 1.18, smoothstep(0.5, 2.0, uAspect));
                 vec3 layoutP = p;
                 layoutP.x /= widthStretch;
                 vec3 modelP = worldToModelSpace(layoutP);
-                vec3 cloudP = modelP;
-                cloudP.x *= 1.28;
-                cloudP.z *= 1.12;
-                cloudP.y = (modelP.y + 0.76) * 1.18 - 0.76;
-                float phase = uSeed * 0.013 + uTime * 0.025;
-
-                float macro = ellipsoidSdf(cloudP, vec3(0.0, -1.02, 0.0), vec3(1.78, 0.66, 1.10));
-                macro = addLobe(macro, cloudP, vec3(-0.92, -0.78, 0.02), vec3(0.66, 0.54, 0.62), phase + 0.2, 0.24, 0.30);
-                macro = addLobe(macro, cloudP, vec3(-0.42, -0.32, -0.06), vec3(0.76, 0.64, 0.68), phase + 1.8, 0.22, 0.30);
-                macro = addLobe(macro, cloudP, vec3(0.42, -0.30, 0.04), vec3(0.80, 0.66, 0.70), phase + 3.0, 0.22, 0.30);
-                macro = addLobe(macro, cloudP, vec3(0.98, -0.78, -0.02), vec3(0.62, 0.52, 0.60), phase + 4.1, 0.24, 0.30);
-                macro = addLobe(macro, cloudP, vec3(0.02, 0.10, 0.0), vec3(0.78, 0.48, 0.64), phase + 5.2, 0.18, 0.28);
-
-                float baseWave =
-                    (noise(vec3(cloudP.xz * 0.45 + phase, uSeed * 0.17)) - 0.5) * 0.24 +
-                    sin(cloudP.x * 0.86 + phase) * 0.07;
-                float bottomLimiter = (MODEL_LOCAL_BASE + 0.86 + baseWave) - cloudP.y;
-                float topLimiter = cloudP.y - (MODEL_LOCAL_BASE + 3.04 + baseWave * 0.10);
-                float sideLimiter = length(cloudP.xz * vec2(0.82, 1.02)) - 2.26;
-                return smax(smax(smax(macro, bottomLimiter, 0.30), topLimiter, 0.30), sideLimiter, 0.38);
+                modelP.x *= 0.82;
+                modelP.z *= 0.92;
+                modelP.y = (modelP.y + 0.42) * 1.22 - 0.42;
+                float photo = uPhotographicStyle;
+                float macro = getCell01(modelP, vec2(0.0, 0.0), mix(3.28, 2.16, photo), 0.0, mix(3.72, 3.42, photo), 1.0, 0.0, 0.18, mix(0.62, 0.34, photo));
+                float capLimiter = modelP.y - (MODEL_LOCAL_BASE + mix(3.9, 3.62, photo) + (noise(vec3(modelP.xz * 0.2, uSeed * 0.23)) - 0.5) * 0.16);
+                float groundLimiter = (MODEL_LOCAL_BASE - 0.28) - modelP.y;
+                return smax(smax(macro, capLimiter, 0.18), groundLimiter, 0.22);
             }
 
             float mapCloudMacro(vec3 p) {
@@ -1486,18 +1474,9 @@
 
                 vec3 q = worldToModelSpace(p);
                 if (uMobileCumulusMode > 0.5) {
-                    vec3 mobileQ = q;
-                    mobileQ.x *= 1.28;
-                    mobileQ.z *= 1.12;
-                    mobileQ.y = (q.y + 0.76) * 1.18 - 0.76;
-                    float dMobile = -macro;
-                    float softBillow = fbm(vec3(mobileQ.x * 0.86, mobileQ.y * 0.72, mobileQ.z * 0.86) + vec3(uSeed * 0.019, 2.4, uTime * 0.018));
-                    float fineEdge = noise(vec3(mobileQ.x * 1.24 + uSeed * 0.031, mobileQ.y * 0.84, mobileQ.z * 1.24 - uTime * 0.02));
-                    float edgeBand = smoothstep(-0.48, 0.34, macro);
-                    dMobile += (softBillow - 0.47) * 0.54;
-                    dMobile -= edgeBand * smoothstep(0.56, 0.88, fineEdge) * 0.26;
-                    dMobile -= smoothstep(0.42, 0.86, abs(mobileQ.y + 0.76)) * 0.08;
-                    return clamp(dMobile, 0.0, 0.82);
+                    q.x *= 0.82;
+                    q.z *= 0.92;
+                    q.y = (q.y + 0.42) * 1.22 - 0.42;
                 }
 
                 vec3 baseQ = q;
@@ -1931,7 +1910,7 @@
             systems: 1,
             timeSpeed: 1,
             renderScale: 0.8,
-            mobileRenderScale: 0.56,
+            mobileRenderScale: 0.68,
             tropopause: 8,
             freezingLevel: 3,
             windShear: 0.3,
@@ -1942,8 +1921,11 @@
             isOrtho: false,
             cameraDistance: 16.0,
             mobileCameraDistance: 24.0,
+            style: 'random',
             autoQuality: false
         });
+        const LOCKED_STYLE_MODE = (query.get('style') || LOCKED_PRESENTATION.style || '').toLowerCase();
+        const LOCKED_RANDOM_STYLE_SEED = Math.floor(Math.random() * 10000);
         const DEFAULT_SEED = LOCKED_PRESENTATION.seed;
         const MODEL_BASE_KM = 0.5;
         const RESET_TARGET_HEIGHT_RATIO = 0.5;
@@ -2981,7 +2963,7 @@
         }
 
         function applyLockedPresentationConfig() {
-            currentSeed = LOCKED_PRESENTATION.seed;
+            currentSeed = LOCKED_STYLE_MODE === 'random' ? LOCKED_RANDOM_STYLE_SEED : LOCKED_PRESENTATION.seed;
             systemCount = LOCKED_PRESENTATION.systems;
             timeSpeed = LOCKED_PRESENTATION.timeSpeed;
             timePaused = false;
