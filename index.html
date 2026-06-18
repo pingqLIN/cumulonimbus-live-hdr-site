@@ -12,8 +12,8 @@
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://cloud.colorgeek.co/" />
     <link rel="icon" href="data:,">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <link rel="preload" href="assets/three-r128.min.js" as="script">
+    <script src="assets/three-r128.min.js"></script>
     <style>
         :root {
             color-scheme: light;
@@ -1878,6 +1878,7 @@
         };
         const query = new URLSearchParams(window.location.search);
         const mobileWideViewQuery = window.matchMedia('(max-width: 760px), (pointer: coarse)');
+        const PUBLIC_LITE_MODE = document.body.dataset.controlsHidden === 'true' && query.get('controls') !== '1';
         const transparentBackground = readTransparentBackgroundQuery(query);
         if (transparentBackground) {
             document.documentElement.dataset.background = 'transparent';
@@ -1971,6 +1972,10 @@
         const MAX_CONVECTIVE_CELLS = 10;
         const FULLSCREEN_RENDER_PIXEL_BUDGET = 1920 * 1080;
         const FULLSCREEN_MIN_EFFECTIVE_SCALE = 0.42;
+        const INITIAL_RENDER_SCALE = 0.42;
+        const INITIAL_MAX_STEPS = 78.0;
+        const INITIAL_STEP_SIZE = 0.3;
+        const INITIAL_QUALITY_FRAMES = useMobileCumulusMode() ? 3 : 2;
         const HDR10_REFERENCE_PEAK_NITS = 1000;
 
         const scene = new THREE.Scene();
@@ -2051,17 +2056,25 @@
         perspCamera.position.copy(resetPosition());
         orthoCamera.position.copy(resetOrthoPosition());
 
-        const controlsPersp = new THREE.OrbitControls(perspCamera, renderer.domElement);
-        controlsPersp.enableDamping = true;
-        controlsPersp.dampingFactor = 0.05;
-        controlsPersp.target.copy(resetTarget());
-        controlsPersp.minDistance = 8.0;
-        controlsPersp.maxDistance = 110.0;
+        function createCameraControls(camera, target) {
+            if (!PUBLIC_LITE_MODE && THREE.OrbitControls) {
+                const controls = new THREE.OrbitControls(camera, renderer.domElement);
+                controls.enableDamping = true;
+                controls.dampingFactor = 0.05;
+                controls.target.copy(target);
+                controls.minDistance = 8.0;
+                controls.maxDistance = 110.0;
+                return controls;
+            }
+            return {
+                enabled: false,
+                target: target.clone(),
+                update() {}
+            };
+        }
 
-        const controlsOrtho = new THREE.OrbitControls(orthoCamera, renderer.domElement);
-        controlsOrtho.enableDamping = true;
-        controlsOrtho.dampingFactor = 0.05;
-        controlsOrtho.target.copy(resetOrthoTarget());
+        const controlsPersp = createCameraControls(perspCamera, resetTarget());
+        const controlsOrtho = createCameraControls(orthoCamera, resetOrthoTarget());
         controlsOrtho.enabled = false;
 
         const captureMode = query.get('capture');
@@ -2080,6 +2093,7 @@
         let simulationTime = 0;
         let renderScale = DEFAULT_RENDER_SCALE;
         let effectiveRenderScale = DEFAULT_RENDER_SCALE;
+        let initialQualityFramesRemaining = INITIAL_QUALITY_FRAMES;
         let fullscreenEntryRenderScale = null;
         let autoQualityEnabled = LOCKED_PRESENTATION.autoQuality;
         let systemCount = LOCKED_PRESENTATION.systems;
@@ -2250,10 +2264,11 @@
 
         function computeEffectiveRenderScale(width, height) {
             const mobileCap = useMobileWideView() ? LOCKED_PRESENTATION.mobileRenderScale : renderScale;
+            const initialCap = initialQualityFramesRemaining > 0 ? INITIAL_RENDER_SCALE : 1.0;
             if (!isFullscreenDisplay && windowedViewportClass !== 'viewport-fullscreen') {
-                return Math.min(renderScale, mobileCap);
+                return Math.min(renderScale, mobileCap, initialCap);
             }
-            return Math.min(renderScale, mobileCap, computeFullscreenRenderScaleCap(width, height));
+            return Math.min(renderScale, mobileCap, computeFullscreenRenderScaleCap(width, height), initialCap);
         }
 
         function updateOrthoBounds(newAspect) {
@@ -3024,8 +3039,13 @@
             const height = Math.max(1, container.clientHeight);
             effectiveRenderScale = computeEffectiveRenderScale(width, height);
             const shaderScale = Math.max(0.45, effectiveRenderScale);
-            material.uniforms.uStepSize.value = THREE.MathUtils.lerp(0.28, 0.16, shaderScale);
-            material.uniforms.uMaxSteps.value = THREE.MathUtils.lerp(84, 156, shaderScale);
+            if (initialQualityFramesRemaining > 0) {
+                material.uniforms.uStepSize.value = INITIAL_STEP_SIZE;
+                material.uniforms.uMaxSteps.value = INITIAL_MAX_STEPS;
+            } else {
+                material.uniforms.uStepSize.value = THREE.MathUtils.lerp(0.28, 0.16, shaderScale);
+                material.uniforms.uMaxSteps.value = THREE.MathUtils.lerp(84, 156, shaderScale);
+            }
             const capLabel = effectiveRenderScale < renderScale - 0.001 ? ` cap ${effectiveRenderScale.toFixed(2)}x FS` : '';
             qualityReadout.innerText = `${renderScale.toFixed(2)}x${capLabel}${autoQualityEnabled ? ' AUTO' : ''}`;
         }
@@ -3420,6 +3440,13 @@
                 material.uniforms.uOrthoSize.value = orthoFrustumSize / orthoCamera.zoom;
             }
             renderer.render(scene, fullscreenCam);
+            if (initialQualityFramesRemaining > 0) {
+                initialQualityFramesRemaining--;
+                if (initialQualityFramesRemaining === 0) {
+                    applyRenderScale();
+                    resizeCanvasToDisplaySize();
+                }
+            }
             updateStageEdgeFill(time);
             frames++;
             if (deltaMs > 0) {
