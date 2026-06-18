@@ -13,7 +13,9 @@
     <meta property="og:url" content="https://cloud.colorgeek.co/" />
     <link rel="icon" href="data:,">
     <link rel="preload" href="assets/three-r128.min.js" as="script">
+    <link rel="preload" href="assets/OrbitControls-r128.js" as="script">
     <script src="assets/three-r128.min.js"></script>
+    <script src="assets/OrbitControls-r128.js"></script>
     <style>
         :root {
             color-scheme: light;
@@ -1878,7 +1880,7 @@
         };
         const query = new URLSearchParams(window.location.search);
         const mobileWideViewQuery = window.matchMedia('(max-width: 760px), (pointer: coarse)');
-        const PUBLIC_LITE_MODE = document.body.dataset.controlsHidden === 'true' && query.get('controls') !== '1';
+        const PUBLIC_LITE_MODE = query.get('lite') === '1';
         const transparentBackground = readTransparentBackgroundQuery(query);
         if (transparentBackground) {
             document.documentElement.dataset.background = 'transparent';
