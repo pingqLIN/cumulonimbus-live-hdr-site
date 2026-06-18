@@ -1542,7 +1542,8 @@
                         noise(vec3(q.x * 0.18 - uTime * 0.015, q.z * 0.22 + uSeed * 0.05, q.y * 0.11))
                     );
                     float photo = uPhotographicStyle;
-                    float carving = noise(q * 0.4 + uTime * 0.1) * mix(1.5, 1.28, photo);
+                    float mobileFullness = step(0.5, uMobileCumulusMode);
+                    float carving = noise(q * 0.4 + uTime * 0.1) * mix(1.5, 1.28, photo) * mix(1.0, 0.72, mobileFullness);
                     float details = fbm(q * 1.2) * 1.0;
                     float microBillow = fbm(vec3(q.x * 1.9, q.y * 2.05, q.z * 1.9) + vec3(uSeed * 0.017, 1.9, uTime * 0.04));
                     float broadBillow = fbm(vec3(q.x * 0.92, q.y * 1.24, q.z * 0.92) + vec3(uSeed * 0.023, 6.1, -uTime * 0.02));
@@ -1555,6 +1556,7 @@
                     float towerBand = smoothstep(0.12, 0.58, height01) * (1.0 - smoothstep(0.78, 1.02, height01));
                     float surfaceShell = smoothstep(-0.7, 0.16, macro) * (1.0 - smoothstep(0.18, 0.82, macro));
                     d += details - carving * 0.8;
+                    d += mobileFullness * smoothstep(-0.62, 0.12, macro) * (1.0 - smoothstep(0.20, 0.74, macro)) * 0.18;
                     d += surfaceShell * towerBand * (microBillow - 0.46) * mix(0.42, 0.74, photo);
                     d += surfaceShell * (1.0 - anvilBand) * (broadBillow - 0.44) * mix(0.0, 0.42, photo);
                     d -= surfaceShell * towerBand * smoothstep(0.58, 0.94, broadBillow) * mix(0.0, 0.18, photo);
@@ -1563,7 +1565,7 @@
                     d -= anvilBand * iceFactor * smoothstep(0.72, 0.98, iceFiber) * 0.12;
                     float edgeBand = smoothstep(-0.72, 0.34, macro);
                     float edgeCuts = noise(vec3(q.x * 0.82 + uSeed * 0.019, q.y * 0.92, q.z * 0.82 - uTime * 0.03));
-                    d -= edgeBand * smoothstep(0.5, 0.86, edgeCuts) * mix(0.24, 0.38, photo);
+                    d -= edgeBand * smoothstep(0.5, 0.86, edgeCuts) * mix(0.24, 0.38, photo) * mix(1.0, 0.42, mobileFullness);
                     float raggedFloor =
                         MODEL_LOCAL_BASE +
                         (noise(vec3(baseQ.xz * 0.58 + uSeed * 0.13, uSeed * 0.29)) - 0.5) * 0.68 +
@@ -1574,7 +1576,7 @@
                         0.88,
                         noise(vec3(baseQ.xz * 1.18 + vec2(3.4, 7.1), uSeed * 0.41))
                     );
-                    d -= undersideBand * undersidePocket * 0.42;
+                    d -= undersideBand * undersidePocket * mix(0.42, 0.18, mobileFullness);
                     d -= dissipating * towerErosionBand * downdraftColumn * 0.72;
                     d -= dissipating * undersideBand * 0.22;
                     d += dissipating * anvilBand * (1.0 - settlingAnvil * 0.68) * 0.12;
@@ -1722,8 +1724,9 @@
                 vec3 lightDir = normalize(mix(daylightDir, goldenDir, step(0.5, uLightPreset) * (1.0 - step(1.5, uLightPreset))));
                 lightDir = normalize(mix(lightDir, backlitDir, step(1.5, uLightPreset)));
                 float sunSin = sin(sunElevationRad);
+                float forcedMoonNight = step(2.5, uSkyMode) * (1.0 - step(3.5, uSkyMode));
                 float sunHeight01 = smoothstep(-0.08, 0.70, sunSin);
-                float night01 = 1.0 - smoothstep(-0.26, -0.02, sunSin);
+                float night01 = max(1.0 - smoothstep(-0.26, -0.02, sunSin), forcedMoonNight);
                 vec3 lowSunLight = mix(vec3(1.0, 0.16, 0.055), vec3(1.0, 0.54, 0.24), smoothstep(-0.08, 0.14, sunSin));
                 vec3 highSunLight = vec3(1.0, 0.93, 0.82);
                 vec3 solarLightColor = mix(lowSunLight, highSunLight, sunHeight01);
@@ -1731,10 +1734,10 @@
                 solarLightColor = mix(solarLightColor, vec3(0.95, 0.9, 1.0), step(1.5, uLightPreset));
                 vec3 moonDir = normalize(vec3(-0.34, 0.55, 0.76));
                 lightDir = normalize(mix(lightDir, moonDir, night01 * 0.86));
-                vec3 moonLightColor = vec3(0.15, 0.20, 0.36) * night01 * mix(0.62, 0.82, uPhotographicStyle);
-                vec3 lightColor = solarLightColor * uSunIntensity * (1.0 - night01 * 0.74) + moonLightColor;
+                vec3 moonLightColor = vec3(0.038, 0.056, 0.13) * night01 * mix(0.50, 0.64, uPhotographicStyle);
+                vec3 lightColor = solarLightColor * uSunIntensity * (1.0 - night01 * 0.92) + moonLightColor;
                 vec3 dayAmbient = mix(vec3(0.065, 0.085, 0.16), vec3(0.18, 0.24, 0.34), max(uPhotographicStyle, sunHeight01 * 0.55)) * uAmbientIntensity;
-                vec3 nightAmbient = vec3(0.025, 0.034, 0.072) * mix(0.82, 1.0, uPhotographicStyle);
+                vec3 nightAmbient = vec3(0.005, 0.008, 0.026) * mix(0.62, 0.82, uPhotographicStyle);
                 vec3 ambientColor = mix(dayAmbient, nightAmbient, night01);
                 float skyT = smoothstep(0.0, 1.0, clamp(uv.y + 0.5, 0.0, 1.0));
                 float screenY = clamp(gl_FragCoord.y / res.y, 0.0, 1.0);
@@ -1746,10 +1749,12 @@
                 vec3 moonSky = mix(vec3(0.012, 0.020, 0.052), vec3(0.0015, 0.004, 0.018), skyT) * max(0.72, uAmbientIntensity);
                 vec2 starUv = vec2(atan(rd.x, rd.z) * 0.15915494 + 0.5, asin(clamp(rd.y, -1.0, 1.0)) * 0.31830988 + 0.5);
                 vec2 starCell = floor(starUv * vec2(150.0, 92.0));
+                vec2 starLocal = fract(starUv * vec2(150.0, 92.0)) - 0.5;
                 float starHash = hash(starCell.x + starCell.y * 193.13 + uSeed * 0.071);
                 float starVisibility = smoothstep(0.02, 0.42, rd.y) * (1.0 - smoothstep(0.88, 1.0, rd.y));
+                float starPoint = 1.0 - smoothstep(0.026, 0.034, length(starLocal));
                 float starTwinkle = 0.68 + 0.32 * sin(uTime * 4.2 + starHash * 81.0);
-                moonSky += vec3(step(0.991, starHash) * starVisibility * starTwinkle * 0.26);
+                moonSky += vec3(step(0.991, starHash) * starPoint * starVisibility * starTwinkle * 0.18);
                 float viewSkyT = smoothstep(mix(-0.36, -0.22, sunHeight01), mix(0.34, 0.84, sunHeight01), rd.y);
                 vec3 nightHorizonSky = vec3(0.010, 0.012, 0.028);
                 vec3 nightZenithSky = vec3(0.002, 0.004, 0.015);
@@ -1982,8 +1987,8 @@
                     seed: Math.floor(Math.random() * 10000),
                     time: randomRange(1.8, 7.8),
                     systems: twoClouds ? 2 : 1,
-                    sunIntensity: randomRange(0.85, 1.45),
-                    ambientIntensity: randomRange(0.72, 0.92),
+                    sunIntensity: randomRange(0.48, 0.86),
+                    ambientIntensity: randomRange(0.46, 0.66),
                     sunElevation: randomRange(-10, -4),
                     sunViewerAngle: Math.random() < 0.5 ? -70 : 70,
                     lightPreset: 2,
@@ -2035,8 +2040,8 @@
         const FULLSCREEN_RENDER_PIXEL_BUDGET = 1920 * 1080;
         const FULLSCREEN_MIN_EFFECTIVE_SCALE = 0.42;
         const INITIAL_RENDER_SCALE = 0.42;
-        const INITIAL_MAX_STEPS = 78.0;
-        const INITIAL_STEP_SIZE = 0.3;
+        const INITIAL_MAX_STEPS = 104.0;
+        const INITIAL_STEP_SIZE = 0.24;
         const INITIAL_QUALITY_FRAMES = useMobileCumulusMode() ? 3 : 2;
         const HDR10_REFERENCE_PEAK_NITS = 1000;
 
