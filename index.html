@@ -267,6 +267,9 @@
         body[data-viewport-mode="background"] #render-container {
             width: 100vw;
             height: 100vh;
+            height: 100dvh;
+            min-height: 100vh;
+            min-height: 100dvh;
             max-width: none;
             max-height: none;
             border: 0;
@@ -859,6 +862,9 @@
             body[data-viewport-mode="background"] .viewport-fullscreen {
                 width: 100vw;
                 height: 100vh;
+                height: 100dvh;
+                min-height: 100vh;
+                min-height: 100dvh;
                 max-width: none;
                 max-height: none;
             }
@@ -2398,8 +2404,11 @@
 
         function resizeCanvasToDisplaySize() {
             const canvas = renderer.domElement;
-            const width = container.clientWidth;
-            const height = container.clientHeight;
+            const viewport = window.visualViewport;
+            const fallbackWidth = Math.round(viewport?.width || window.innerWidth || document.documentElement.clientWidth || 1);
+            const fallbackHeight = Math.round(viewport?.height || window.innerHeight || document.documentElement.clientHeight || 1);
+            const width = container.clientWidth || fallbackWidth;
+            const height = container.clientHeight || fallbackHeight;
             if (width === 0 || height === 0) return;
             if (isFullscreenDisplay) {
                 updateViewportLabel();
