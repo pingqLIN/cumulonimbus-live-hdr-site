@@ -1793,6 +1793,20 @@
                 col = mix(col, sunsetSky, sunsetMask);
                 col = mix(col, moonSky, moonMask);
                 col = mix(col, atmosphereSky, atmosphereMask);
+                if (uTransparentBackground < 0.5 && rd.y < -0.002) {
+                    float skyPlaneT = -ro.y / rd.y;
+                    if (skyPlaneT > 0.0) {
+                        float planeDistanceFade = 1.0 - exp(-skyPlaneT * 0.020);
+                        float planeGrazingFade = smoothstep(0.015, 0.22, -rd.y);
+                        float skyLightOnly = clamp(dot(ambientColor, vec3(0.2126, 0.7152, 0.0722)) * 4.8, 0.0, 1.0);
+                        float lowSunSkyPlane = max(sunsetMask, atmosphereMask * (1.0 - smoothstep(0.10, 0.45, sunSin)));
+                        float planeExposure = mix(0.42, 1.08, skyLightOnly);
+                        planeExposure *= mix(1.0, 0.68, lowSunSkyPlane);
+                        planeExposure = mix(planeExposure, 0.62, forcedMoonNight);
+                        vec3 skyCopiedPlane = col * planeExposure;
+                        col = mix(col, skyCopiedPlane, planeDistanceFade * planeGrazingFade);
+                    }
+                }
                 if (uTransparentBackground < 0.5) {
                     col = gridOverlay(col, ro, rd);
                 }
